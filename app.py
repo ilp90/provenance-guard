@@ -20,49 +20,38 @@ from flask_limiter.util import get_remote_address
 load_dotenv()
 
 import audit_log
-from detection import llm_signal
+from detection import llm_signal, stylometry_signal
+from labels import build_label
+from scoring import score
 
 app = Flask(__name__)
 
-# Rate limiting — placeholder default; specific per-endpoint limits + reasoning
-# are chosen and documented in Milestone 5.
+# Rate limiting. Limits are applied per-endpoint (see /submit). Keyed by client
+# IP. In-memory storage is fine for this single-process dev/grading setup; a
+# production deploy would point storage_uri at Redis. Reasoning for the chosen
+# numbers is documented in the README.
 limiter = Limiter(
-    key_func=get_remote_address,
+    get_remote_address,
     app=app,
-    default_limits=["60 per minute"],
+    default_limits=[],
+    storage_uri="memory://",
 )
+
+# /submit limits — see README "Rate limiting" for the reasoning.
+SUBMIT_LIMITS = "10 per minute;100 per day"
 
 audit_log.init_db()
 
 MAX_TEXT_CHARS = 20000
 
 
-# --- placeholder scoring (single-signal) — replaced by the real scorer in M4 ---
-def _placeholder_attribution(llm_score):
-    """Map Signal 1's score to a verdict using planning.md §5 thresholds.
-
-    Asymmetric on purpose: high bar (>=0.70) before we ever say 'likely_ai'.
-    """
-    if llm_score >= 0.70:
-        return "likely_ai"
-    if llm_score <= 0.35:
-        return "likely_human"
-    return "uncertain"
-
-
-def _placeholder_confidence(llm_score):
-    # decisiveness = distance from the undecided middle. Real formula (with the
-    # second signal's disagreement term) lands in M4.
-    return round(abs(llm_score - 0.5) * 2, 3)
-
-
-def _placeholder_label(attribution):
-    text = {
-        "likely_ai": "Placeholder: this text may be AI-generated (single-signal, pre-M5).",
-        "likely_human": "Placeholder: this text appears human-written (single-signal, pre-M5).",
-        "uncertain": "Placeholder: attribution undetermined (single-signal, pre-M5).",
-    }[attribution]
-    return {"variant": attribution, "text": text}
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return jsonify({
+        "error": "rate limit exceeded",
+        "limit": str(e.description),
+        "message": "Too many submissions. Please slow down and try again shortly.",
+    }), 429
 
 
 @app.get("/health")
@@ -71,6 +60,7 @@ def health():
 
 
 @app.post("/submit")
+@limiter.limit(SUBMIT_LIMITS)
 def submit():
     data = request.get_json(silent=True) or {}
     text = (data.get("text") or "").strip()
@@ -90,10 +80,14 @@ def submit():
         return jsonify({"error": "detection signal unavailable",
                         "detail": str(exc)}), 502
 
+    signal2 = stylometry_signal(text)          # pure Python, no network
     llm_score = signal1["ai_probability"]
-    attribution = _placeholder_attribution(llm_score)
-    confidence = _placeholder_confidence(llm_score)
-    label = _placeholder_label(attribution)
+    sty_score = signal2["ai_probability"]
+
+    result = score(llm_score, sty_score)       # planning.md §2.2 + §5
+    attribution = result["verdict"]
+    confidence = result["confidence"]
+    label = build_label(attribution, confidence)
 
     audit_log.record_classification(
         content_id=content_id,
@@ -103,24 +97,62 @@ def submit():
         attribution=attribution,
         confidence=confidence,
         llm_score=llm_score,
-        stylometry_score=None,
+        stylometry_score=sty_score,
         status="classified",
-        detail={"llm_rationale": signal1["rationale"]},
+        detail={
+            "llm_rationale": signal1["rationale"],
+            "stylometry_features": signal2["features"],
+            "combined_ai_probability": result["combined_ai_probability"],
+            "disagreement": result["disagreement"],
+            "high_confidence": result["high_confidence"],
+        },
     )
 
     return jsonify({
         "content_id": content_id,
         "creator_id": creator_id,
         "attribution": attribution,
-        "confidence": confidence,          # placeholder until M4
-        "combined_ai_probability": llm_score,
+        "confidence": confidence,
+        "combined_ai_probability": result["combined_ai_probability"],
+        "disagreement": result["disagreement"],
         "signals": {
             "llm": {"ai_probability": llm_score,
                     "rationale": signal1["rationale"]},
-            "stylometry": None,            # arrives in M4
+            "stylometry": {"ai_probability": sty_score,
+                           "features": signal2["features"]},
         },
-        "label": label,                    # placeholder until M5
+        "label": label,
         "status": "classified",
+    })
+
+
+@app.post("/appeal")
+def appeal():
+    """A creator contests a classification (planning.md §7).
+
+    Accepts { content_id, creator_reasoning }. Flips the submission to
+    'under_review' and logs the appeal beside the original decision. No
+    automated re-classification — a human reviews the queue.
+    """
+    data = request.get_json(silent=True) or {}
+    content_id = (data.get("content_id") or "").strip()
+    # Accept the milestone's field name and the planning.md alias.
+    reasoning = (data.get("creator_reasoning") or data.get("reason") or "").strip()
+
+    if not content_id:
+        return jsonify({"error": "field 'content_id' is required"}), 400
+    if not reasoning:
+        return jsonify({"error": "field 'creator_reasoning' is required"}), 400
+
+    row = audit_log.record_appeal(content_id=content_id, reason=reasoning)
+    if row is None:
+        return jsonify({"error": "unknown content_id"}), 404
+
+    return jsonify({
+        "content_id": content_id,
+        "status": "under_review",
+        "appeal_logged": True,
+        "message": "Appeal received. This submission is now under review by a human.",
     })
 
 

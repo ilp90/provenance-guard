@@ -1,0 +1,94 @@
+{
+  "entries": [
+    {
+      "attribution": "likely_ai",
+      "confidence": 0.56,
+      "content_id": "a62b8328-ba13-4783-a906-09a67f24b7ee",
+      "creator_id": "u-ai",
+      "detail": {
+        "appeal_reasoning": "I wrote this myself from personal experience. I am a non-native English speaker and my writing style may appear more formal than typical.",
+        "original_decision": {
+          "attribution": "likely_ai",
+          "confidence": 0.56,
+          "llm_score": 0.8,
+          "stylometry_score": 1.0
+        }
+      },
+      "event_type": "appeal",
+      "id": 4,
+      "llm_score": 0.8,
+      "status": "under_review",
+      "stylometry_score": 1.0,
+      "timestamp": "2026-07-01T01:30:40.208Z"
+    },
+    {
+      "attribution": "uncertain",
+      "confidence": 0.0,
+      "content_id": "4bf07b39-a41e-464e-90d2-b3386401f97f",
+      "creator_id": "u-edited",
+      "detail": {
+        "combined_ai_probability": 0.466,
+        "disagreement": 0.1649,
+        "high_confidence": false,
+        "llm_rationale": "The text's balanced perspective and nuanced discussion of tradeoffs suggest human authorship, but its polished and generic phrasing could also indicate AI generation.",
+        "stylometry_features": {
+          "avg_word_length": 5.027,
+          "punctuation_density": 0.1622,
+          "sentence_length_variance": 5.558
+        }
+      },
+      "event_type": "classification",
+      "id": 3,
+      "llm_score": 0.4,
+      "status": "classified",
+      "stylometry_score": 0.5649,
+      "timestamp": "2026-07-01T01:29:32.400Z"
+    },
+    {
+      "attribution": "likely_ai",
+      "confidence": 0.56,
+      "content_id": "a62b8328-ba13-4783-a906-09a67f24b7ee",
+      "creator_id": "u-ai",
+      "detail": {
+        "combined_ai_probability": 0.88,
+        "disagreement": 0.2,
+        "high_confidence": true,
+        "llm_rationale": "The text's use of cliches and uniformly developed prose suggests AI generation, but its topical grounding and coherent structure introduce some uncertainty.",
+        "stylometry_features": {
+          "avg_word_length": 7.775,
+          "punctuation_density": 0.15,
+          "sentence_length_variance": 2.357
+        }
+      },
+      "event_type": "classification",
+      "id": 2,
+      "llm_score": 0.8,
+      "status": "classified",
+      "stylometry_score": 1.0,
+      "timestamp": "2026-07-01T01:29:31.932Z"
+    },
+    {
+      "attribution": "likely_human",
+      "confidence": 0.5786,
+      "content_id": "388bc91f-c0e7-4e9a-8923-da9bab3c536a",
+      "creator_id": "u-human",
+      "detail": {
+        "combined_ai_probability": 0.1573,
+        "disagreement": 0.1068,
+        "high_confidence": true,
+        "llm_rationale": "The text's casual tone, personal experience, and specific criticisms suggest a human writer.",
+        "stylometry_features": {
+          "avg_word_length": 4.302,
+          "punctuation_density": 0.0698,
+          "sentence_length_variance": 7.595
+        }
+      },
+      "event_type": "classification",
+      "id": 1,
+      "llm_score": 0.2,
+      "status": "classified",
+      "stylometry_score": 0.0932,
+      "timestamp": "2026-07-01T01:29:31.092Z"
+    }
+  ]
+}

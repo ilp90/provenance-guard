@@ -118,7 +118,7 @@ def record_appeal(*, content_id, reason):
             """,
             (content_id, row["creator_id"], ts, row["attribution"],
              row["confidence"], row["llm_score"], row["stylometry_score"],
-             json.dumps({"reason": reason,
+             json.dumps({"appeal_reasoning": reason,
                          "original_decision": {
                              "attribution": row["attribution"],
                              "confidence": row["confidence"],

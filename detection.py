@@ -1,13 +1,16 @@
 """Detection signals.
 
-Milestone 3: Signal 1 only — the Groq LLM classifier.
-Signal 2 (stylometry) and the combined confidence scorer arrive in Milestone 4.
+Signal 1 — Groq LLM classifier (semantic).
+Signal 2 — stylometric heuristics (structural, pure Python).
 
-Signal 1 contract (planning.md §2.1):
-    llm_signal(text) -> {"ai_probability": float in [0,1], "rationale": str}
+Contracts (planning.md §2.1):
+    llm_signal(text)        -> {"ai_probability": float, "rationale": str}
+    stylometry_signal(text) -> {"ai_probability": float, "features": {...}}
 """
 import json
 import os
+import re
+import statistics
 
 from groq import Groq
 
@@ -58,3 +61,60 @@ def llm_signal(text):
     score = max(0.0, min(100.0, score)) / 100.0
     rationale = str(data.get("rationale", "")).strip()
     return {"ai_probability": score, "rationale": rationale}
+
+
+# --- Signal 2: stylometry -----------------------------------------------------
+
+_WORD_RE = re.compile(r"\b[\w']+\b")
+_PUNCT_RE = re.compile(r"[,;:\-—()\"'?!.]")
+
+# Per-feature cutoffs mapping a raw metric to an AI-likelihood in [0,1].
+# (human_end, ai_end): the metric value that reads fully human vs. fully AI.
+# Calibrated against the Milestone-4 test inputs; see planning.md §2.1.
+_BURST = (7.0, 3.0)      # sentence-length std (words): high=human, low=AI
+_WLEN = (4.2, 6.0)       # avg word length (chars):     low=human, high=AI
+_PUNCT = (0.04, 0.15)    # punctuation marks per word:   low=human, high=AI
+
+# Sub-signal weights — word length discriminates best, punctuation least.
+_W_WLEN, _W_BURST, _W_PUNCT = 0.45, 0.30, 0.25
+
+
+def _clamp01(x):
+    return max(0.0, min(1.0, x))
+
+
+def _lerp_score(value, human_end, ai_end):
+    """Linear map from raw metric to AI-likelihood [0,1] across the cutoffs."""
+    return _clamp01((value - human_end) / (ai_end - human_end))
+
+
+def stylometry_signal(text):
+    """Signal 2: structural statistics, meaning-blind. Pure Python, no network.
+
+    Returns {"ai_probability": float 0..1, "features": {...raw metrics...}}.
+    """
+    sentences = [s for s in re.split(r"[.!?]+", text) if s.strip()]
+    words = _WORD_RE.findall(text)
+    n_words = max(1, len(words))
+
+    sent_lengths = [len(_WORD_RE.findall(s)) for s in sentences]
+    burstiness = statistics.pstdev(sent_lengths) if len(sent_lengths) > 1 else 0.0
+    avg_word_length = sum(len(w) for w in words) / n_words
+    punctuation_density = len(_PUNCT_RE.findall(text)) / n_words
+
+    ai_burst = _lerp_score(burstiness, *_BURST)
+    ai_wlen = _lerp_score(avg_word_length, *_WLEN)
+    ai_punct = _lerp_score(punctuation_density, *_PUNCT)
+
+    ai_probability = round(
+        _W_WLEN * ai_wlen + _W_BURST * ai_burst + _W_PUNCT * ai_punct, 4
+    )
+
+    return {
+        "ai_probability": ai_probability,
+        "features": {
+            "sentence_length_variance": round(burstiness, 3),
+            "avg_word_length": round(avg_word_length, 3),
+            "punctuation_density": round(punctuation_density, 4),
+        },
+    }

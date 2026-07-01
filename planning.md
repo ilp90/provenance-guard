@@ -4,9 +4,11 @@ Backend service that any creative-sharing platform can plug into to classify
 submitted text, score confidence in that classification, surface a transparency
 label to readers, and let creators appeal a verdict they believe is wrong.
 
-> **Status:** Milestones 1–2 complete (architecture + full spec). This document
-> is the contract every later component implements, and the source material fed
-> to AI tools during M3–M5 (see the **AI Tool Plan** section).
+> **Status:** Milestones 1–5 complete — architecture, full spec, and a working
+> implementation (submission endpoint, two signals, confidence scorer, three
+> transparency labels, appeals, rate limiting, structured audit log). This
+> document is the contract the implementation follows; evidence lives in the
+> README.
 
 ---
 
@@ -84,17 +86,24 @@ informative than either alone.
   carry stylistic bias against non-native English or formulaic genres.
 
 ### Signal 2 — Stylometric Heuristics (pure Python)
-- **Measures:** quantifiable structure of the text:
+- **Measures:** three quantifiable structural properties, each mapped to an
+  AI-likelihood sub-score and combined (weights in §2.1):
   - **sentence-length variance** (burstiness) — humans vary sentence length a
-    lot; AI tends toward uniform medium-length sentences,
-  - **type-token ratio** — vocabulary diversity per length,
-  - **punctuation density** — rate/variety of punctuation marks.
-- **Why it differs:** AI sampling smooths toward statistically average,
-  low-variance prose; human writing is "burstier" and more uneven.
-- **Blind spot:** purely surface-level — has no idea what the text *means*. A
-  human writing in a deliberately uniform style (e.g. terse minimalism, a
-  technical abstract) looks "AI-like"; a creative AI prompt can produce high
-  variance. Statistics are noisy and unstable on short inputs.
+    lot; AI trends toward uniform medium-length sentences,
+  - **average word length** — formal/AI prose leans on longer, "sophisticated"
+    words; casual human writing uses shorter ones,
+  - **punctuation density** — marks per word; formal/AI prose is more heavily,
+    evenly punctuated.
+- **Type-token ratio was evaluated and dropped:** on the short texts this system
+  sees (a stanza, a paragraph) TTR is length-dominated and sat at 0.86–0.90 for
+  clearly-human *and* clearly-AI samples alike, so it carried no signal. Average
+  word length replaced it as a discriminating, still meaning-blind metric.
+- **Why it differs:** AI sampling smooths toward statistically average prose;
+  human writing is "burstier," shorter-worded, and more uneven.
+- **Blind spot:** purely surface-level — no idea what the text *means*. A human
+  writing in a formal/technical register (long words, even sentences) scores
+  "AI-like" — this is the §3 false-positive trap, caught by signal disagreement.
+  A creative AI prompt can mimic burstiness. Statistics are noisy on short input.
 
 **Why pairing them helps:** the LLM's blind spots (length, light editing) and
 the stylometry's blind spots (no meaning, style false-positives) are different,
@@ -113,15 +122,17 @@ Both signals output an **AI-probability in `[0,1]`** (0 = certainly human,
 // Signal 2 — Stylometry
 { "ai_probability": 0.31,
   "features": {
-    "sentence_length_variance": 0.74,  // high = bursty/human-like
-    "type_token_ratio": 0.58,          // high = diverse vocab
-    "punctuation_density": 0.06        // marks per word
+    "sentence_length_variance": 6.72,  // words; low = uniform/AI-like
+    "avg_word_length": 4.27,           // chars; high = formal/AI-like
+    "punctuation_density": 0.09        // marks per word; high = formal/AI-like
   } }
 ```
 
 The LLM is prompted to return an integer 0–100 (÷100). Stylometry maps each raw
-feature to a per-feature AI-score via documented thresholds (e.g. variance below
-a cutoff → leans AI), then averages the three into one `ai_probability`.
+feature to a per-feature AI-score in `[0,1]` via documented cutoffs, then takes a
+weighted average — **0.45 · word-length + 0.30 · burstiness + 0.25 · punctuation**
+(word length weighted highest as the strongest discriminator; see §2.1 cutoffs
+in `detection.py`).
 
 ### 2.2 Combination → `combined_ai_probability`
 
