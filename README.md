@@ -345,9 +345,4 @@ The design decisions (two-signal choice, asymmetric thresholds, the confidence
 gate as the false-positive backstop) originated in the spec and were reviewed and
 verified at each step, not accepted blindly from generated code.
 
-## Portfolio walkthrough
 
-A short (~2 min) video tour is linked here: _[add link]_. It shows a submission
-flowing through both signals to a label, an appeal moving a decision to
-`under_review`, and the rate limiter returning `429` — with a few words on why the
-scoring is asymmetric.
